@@ -1,0 +1,159 @@
+#!/bin/rc
+
+verbose=1
+gpgstore=$HOME/.gnupg/store
+download=$HOME/downloads
+
+fn red {
+  printf '\033[31;1m'$*'\033[0m'
+}
+
+fn green {
+  printf '\033[32;1m'$*'\033[0m'
+}
+
+fn yellow {
+  printf '\033[33;1m'$*'\033[0m'
+}
+
+fn info {
+  printf $app': '
+  green 'INFO: '
+  printf $*$nl
+}
+
+fn verbose {
+  if (!~ $verbose ())
+    info $*
+}
+
+fn warn {
+  printf $app': '
+  yellow 'WARNING: '
+  printf $*$nl
+}
+
+fn error {
+  printf $app': '
+  red 'ERROR: '
+  printf $*$nl
+}
+
+fn filename {
+  parts=`` (/) (echo $*(1))
+  if (~ $*(2) ()) {
+    echo $parts($#parts)
+  } else {
+    echo $parts($*(2))
+  }  
+}
+
+app=`(filename $0)
+winid=$*(1)
+verbose 'winid: '$winid
+
+atom=`` ($nl) {xprop --id=$winid --dformat=8s:'$'0 --raw _SURF_URI | jq --raw-output .uri,.useragent,.cookies}
+verbose 'uri: '$atom(1)
+verbose 'user agent: '$atom(2)
+verbose 'cookies: '$atom(3)
+
+fn set_atom {
+  verbose 'atom: '$*
+  xprop --id=$winid --format=_SURF_RC:8s --set=_SURF_RC:$*
+}
+
+fn set_url {
+  verbose 'go: '$*
+  set_atom '{"rc":80,"uri":"'$*'"}'
+}
+
+fn go {
+  new=`{echo $domain | dmenu -p Go: -w $winid}
+  if (!~ $new ())
+    set_url $new
+}
+
+fn download {
+  verbose 'download: '$*(1)
+  curl --globoff --location --remote-header-name --remote-name --user-agent $atom(2) --cookie $atom(3) --cookie-jar $atom(3) --referer $atom(1) --output-dir $download $*(1)
+  if (~ $status 0)
+    notify-send --icon=/etc/xdg/awesome/icons/downloads.png '<b>File downloaded:</b>' $*(1)
+}
+
+fn find_in_page {
+  key=`{dmenu -p Find: -w $winid </dev/null}
+  if (~ $key ())
+    exit
+  verbose 'key: '$key
+  set_atom '{"rc":82,"keyword":"'$key'","options":17}'
+}
+
+fn search_engine {
+  query=`{dmenu -p Search: -w $winid </dev/null}
+  if (!~ $query ())
+    set_url 'duckduckgo.com?q='$^query 
+}
+
+fn play_video {
+  verbose 'uri: '$*(1)
+  mpv --really-quiet $*(1)
+}
+
+fn usr_pwd {
+  domain=`(filename $atom(1) 2)
+  verbose 'domain: '$domain
+
+  gpgs=`(ls --recursive $gpgstore)
+  for (gpg in $gpgs) {
+    if (~ $gpg *:) {
+      dir=$gpg
+    } else if (~ $gpg $domain) {
+      file=`(filename $dir)
+      parts=`` (:) (echo $file)
+      list=($list $parts(1))
+    }
+  }
+  if (~ $list ()) {
+    notify-send --icon=/etc/xdg/awesome/icons/keyguard.png '<b>Passwords:</b>' 'No candidates found ('$domain')'
+    exit
+  }
+  if (!~ $#list 1) {
+    list=`{echo $list$nl | dmenu -p $domain}
+    if (~ $list ())
+      exit
+  }
+  pwd=`(gpg --decrypt --quiet $gpgstore/$list/$domain)
+  set_atom '{"rc":85,"user":"'$list'","password":"'$pwd'"}'
+}
+
+fn plumb {
+  verbose 'uri: '$*(1)
+  xdg-open $*(1)
+}
+
+fn page_loaded {
+  notify-send 'Page is loaded'
+}
+
+rc=$*(2)
+verbose 'rc: '$rc
+switch ($rc) {
+  case 1
+    page_loaded
+  case 80
+    go
+  case 81
+    download $*(3)
+  case 82
+    find_in_page
+  case 83
+    search_engine
+  case 84
+    play_video $*(3)
+  case 85
+    usr_pwd
+  case 86
+    plumb $*(3)
+  case *
+    error 'unknown command: '$rc
+}
