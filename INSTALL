@@ -1,0 +1,6 @@
+./configure --debug --disable-winsize --disable-title --disable-atomuri
+gpg --gen-key
+gpg --list-keys | grep uid
+mkdir -p $HOME/.gnupg/store/gadefoxren@gmail.com
+echo <pwd> | gpg --encrypt --recipient gadefoxren@gmail.com --output $HOME/.gnupg/store/gadefoxren@gmail.com/gmail.com
+gpg --decrypt --quiet $HOME/.gnupg/store/gadefoxren@gmail.com/gmail.com
